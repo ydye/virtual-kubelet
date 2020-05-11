@@ -16,6 +16,7 @@ package root
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
 
@@ -124,13 +125,16 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 		InternalIP:        os.Getenv("VKUBELET_POD_IP"),
 		KubeClusterDomain: c.KubeClusterDomain,
 	}
-
+	fmt.Println("[debug][point1] >>>>>>>")
 	pInit := s.Get(c.Provider)
+	fmt.Println("[debug][point1] >>>>>>>")
 	if pInit == nil {
 		return errors.Errorf("provider %q not found", c.Provider)
 	}
-
+	fmt.Println("[debug][point2] >>>>>>>")
 	p, err := pInit(initConfig)
+	fmt.Printf("%+v\n", initConfig)
+	fmt.Println("[debug][point2] >>>>>>>")
 	if err != nil {
 		return errors.Wrapf(err, "error initializing provider %s", c.Provider)
 	}
