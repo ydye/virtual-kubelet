@@ -131,6 +131,8 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 	}
 	fmt.Println("[debug][point2] >>>>>>>")
 	p, err := pInit(initConfig)
+	fmt.Printf("%+v\n", c.Provider)
+	fmt.Printf("%+v\n", pInit)
 	fmt.Printf("%+v\n", initConfig)
 	fmt.Println("[debug][point2] >>>>>>>")
 	if err != nil {
