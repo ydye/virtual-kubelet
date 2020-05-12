@@ -88,7 +88,10 @@ func NewMockProviderMockConfig(config MockConfig, nodeName, operatingSystem stri
 // NewMockProvider creates a new MockProvider, which implements the PodNotifier interface
 func NewMockProvider(providerConfig, nodeName, operatingSystem string, internalIP string, daemonEndpointPort int32) (*MockProvider, error) {
 	config, err := loadConfig(providerConfig, nodeName)
+	fmt.Printf("%+v\n", providerConfig)
+	fmt.Printf("%+v\n", nodeName)
 	if err != nil {
+		fmt.Printf("%+v\n", err)
 		return nil, err
 	}
 
