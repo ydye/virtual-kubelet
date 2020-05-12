@@ -89,9 +89,7 @@ func NewMockProviderMockConfig(config MockConfig, nodeName, operatingSystem stri
 func NewMockProvider(providerConfig, nodeName, operatingSystem string, internalIP string, daemonEndpointPort int32) (*MockProvider, error) {
 	config, err := loadConfig(providerConfig, nodeName)
 	fmt.Printf("%+v\n", providerConfig)
-	fmt.Printf("%+v\n", nodeName)
 	if err != nil {
-		fmt.Printf("%+v\n", err)
 		return nil, err
 	}
 
@@ -111,6 +109,17 @@ func loadConfig(providerConfig, nodeName string) (config MockConfig, err error) 
 	}
 	if _, exist := configMap[nodeName]; exist {
 		config = configMap[nodeName]
+		if config.CPU == "" {
+			config.CPU = defaultCPUCapacity
+		}
+		if config.Memory == "" {
+			config.Memory = defaultMemoryCapacity
+		}
+		if config.Pods == "" {
+			config.Pods = defaultPodCapacity
+		}
+	} else {
+		config = configMap["default"]
 		if config.CPU == "" {
 			config.CPU = defaultCPUCapacity
 		}
