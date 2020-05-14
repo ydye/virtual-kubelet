@@ -196,7 +196,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 
 		go podInformerFactory.Start(ctx.Done())
 		go scmInformerFactory.Start(ctx.Done())
-
+		fmt.Printf("%+v\n", apiConfig)
 		cancelHTTP, err := setupHTTPServer(ctx, p, apiConfig, func(context.Context) ([]*corev1.Pod, error) {
 			return rm.GetPods(), nil
 		})
