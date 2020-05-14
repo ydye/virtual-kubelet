@@ -38,6 +38,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"time"
 )
 
 // NewCommand creates a new top-level command.
@@ -56,6 +57,7 @@ This allows users to schedule kubernetes workloads on nodes that aren't running 
 					_ = runRootCommand(ctx, s, c, nodeName, i)
 				}(i)
 			}
+			time.Sleep(24 * time.Hour)
 			return nil
 		},
 	}
