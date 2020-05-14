@@ -109,7 +109,8 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 		if err != nil {
 			return errors.Wrap(err, "could not create resource manager")
 		}
-		c.ListenPort = int32(10225 + i)
+		c.ListenPort = int32(11250 + i)
+		c.MetricsAddr = ":" + string(int32(10225+i))
 		apiConfig, err := getAPIConfig(c)
 		if err != nil {
 			return err
@@ -124,7 +125,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 			NodeName:          nodeName,
 			OperatingSystem:   c.OperatingSystem,
 			ResourceManager:   rm,
-			DaemonPort:        int32(c.ListenPort) + int32(i),
+			DaemonPort:        int32(c.ListenPort),
 			InternalIP:        os.Getenv("VKUBELET_POD_IP"),
 			KubeClusterDomain: c.KubeClusterDomain,
 		}
