@@ -98,7 +98,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts, nodeName str
 		c.InformerResyncPeriod,
 		kubeinformers.WithNamespace(c.KubeNamespace),
 		kubeinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", c.NodeName).String()
+			options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", nodeName).String()
 		}))
 	podInformer := podInformerFactory.Core().V1().Pods()
 
@@ -145,7 +145,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts, nodeName str
 	ctx = log.WithLogger(ctx, log.G(ctx).WithFields(log.Fields{
 		"provider":         c.Provider,
 		"operatingSystem":  c.OperatingSystem,
-		"node":             c.NodeName,
+		"node":             nodeName,
 		"watchedNamespace": c.KubeNamespace,
 	}))
 
@@ -154,7 +154,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts, nodeName str
 		leaseClient = client.CoordinationV1beta1().Leases(corev1.NamespaceNodeLease)
 	}
 
-	pNode := NodeFromProvider(ctx, c.NodeName, taint, p, c.Version)
+	pNode := NodeFromProvider(ctx, nodeName, taint, p, c.Version)
 	nodeRunner, err := node.NewNodeController(
 		node.NaiveNodeProvider{},
 		pNode,
