@@ -61,6 +61,8 @@ type Opts struct {
 	// Node name to use when creating a node in Kubernetes
 	NodeName string
 
+	HeartInterval time.Duration
+
 	// Operating system to run pods for
 	OperatingSystem string
 
@@ -108,6 +110,10 @@ func SetDefaultOpts(c *Opts) error {
 
 	if c.InformerResyncPeriod == 0 {
 		c.InformerResyncPeriod = DefaultInformerResyncPeriod
+	}
+
+	if c.HeartInterval == 0 {
+		c.HeartInterval = 10 * time.Second
 	}
 
 	if c.MetricsAddr == "" {

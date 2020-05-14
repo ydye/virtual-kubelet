@@ -16,10 +16,6 @@ package root
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path"
-
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/virtual-kubelet/virtual-kubelet/cmd/virtual-kubelet/internal/provider"
@@ -39,6 +35,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
+	"os"
+	"path"
 )
 
 // NewCommand creates a new top-level command.
@@ -129,12 +127,8 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 	if pInit == nil {
 		return errors.Errorf("provider %q not found", c.Provider)
 	}
-	fmt.Println("[debug][point2] >>>>>>>")
+
 	p, err := pInit(initConfig)
-	fmt.Printf("%+v\n", c.Provider)
-	fmt.Printf("%+v\n", pInit)
-	fmt.Printf("%+v\n", initConfig)
-	fmt.Println("[debug][point2] >>>>>>>")
 	if err != nil {
 		return errors.Wrapf(err, "error initializing provider %s", c.Provider)
 	}
@@ -157,6 +151,8 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 		pNode,
 		client.CoreV1().Nodes(),
 		node.WithNodeEnableLeaseV1Beta1(leaseClient, nil),
+		node.WithNodePingInterval(c.HeartInterval),
+		node.WithNodeStatusUpdateInterval(c.HeartInterval),
 		node.WithNodeStatusUpdateErrorHandler(func(ctx context.Context, err error) error {
 			if !k8serrors.IsNotFound(err) {
 				return err
