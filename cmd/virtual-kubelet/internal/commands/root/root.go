@@ -37,6 +37,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"os"
 	"path"
+	"strconv"
 )
 
 // NewCommand creates a new top-level command.
@@ -49,7 +50,13 @@ func NewCommand(ctx context.Context, name string, s *provider.Store, c Opts) *co
 backend implementation allowing users to create kubernetes nodes without running the kubelet.
 This allows users to schedule kubernetes workloads on nodes that aren't running Kubernetes.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRootCommand(ctx, s, c)
+			for i := 1; i <= c.NodeNumber; i++ {
+				go func(i int) {
+					nodeName := c.NodeName + "-" + strconv.Itoa(i)
+					_ = runRootCommand(ctx, s, c, nodeName, i)
+				}(i)
+			}
+			return nil
 		},
 	}
 
@@ -57,7 +64,7 @@ This allows users to schedule kubernetes workloads on nodes that aren't running 
 	return cmd
 }
 
-func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
+func runRootCommand(ctx context.Context, s *provider.Store, c Opts, nodeName string, id int) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -116,10 +123,10 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 
 	initConfig := provider.InitConfig{
 		ConfigPath:        c.ProviderConfigPath,
-		NodeName:          c.NodeName,
+		NodeName:          nodeName,
 		OperatingSystem:   c.OperatingSystem,
 		ResourceManager:   rm,
-		DaemonPort:        int32(c.ListenPort),
+		DaemonPort:        int32(c.ListenPort) + int32(id),
 		InternalIP:        os.Getenv("VKUBELET_POD_IP"),
 		KubeClusterDomain: c.KubeClusterDomain,
 	}

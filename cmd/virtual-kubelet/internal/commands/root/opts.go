@@ -61,6 +61,8 @@ type Opts struct {
 	// Node name to use when creating a node in Kubernetes
 	NodeName string
 
+	NodeNumber int
+
 	HeartInterval time.Duration
 
 	// Operating system to run pods for
@@ -102,6 +104,10 @@ type Opts struct {
 func SetDefaultOpts(c *Opts) error {
 	if c.OperatingSystem == "" {
 		c.OperatingSystem = DefaultOperatingSystem
+	}
+
+	if c.NodeNumber == 0 {
+		c.NodeNumber = 1
 	}
 
 	if c.NodeName == "" {
