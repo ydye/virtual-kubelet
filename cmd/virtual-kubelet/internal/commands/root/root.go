@@ -52,14 +52,7 @@ func NewCommand(ctx context.Context, name string, s *provider.Store, c Opts) *co
 backend implementation allowing users to create kubernetes nodes without running the kubelet.
 This allows users to schedule kubernetes workloads on nodes that aren't running Kubernetes.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			for i := 1; i <= c.NodeNumber; i++ {
-				go func(i int) {
-					nodeName := c.NodeName + "-" + strconv.Itoa(i)
-					_ = runRootCommand(ctx, s, c, nodeName, i)
-				}(i)
-			}
-			time.Sleep(24 * time.Hour)
-			return nil
+			return runRootCommand(ctx, s, c)
 		},
 	}
 
@@ -67,179 +60,184 @@ This allows users to schedule kubernetes workloads on nodes that aren't running 
 	return cmd
 }
 
-func runRootCommand(ctx context.Context, s *provider.Store, c Opts, nodeName string, id int) error {
+func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if ok := provider.ValidOperatingSystems[c.OperatingSystem]; !ok {
-		return errdefs.InvalidInputf("operating system %q is not supported", c.OperatingSystem)
-	}
-
-	if c.PodSyncWorkers == 0 {
-		return errdefs.InvalidInput("pod sync workers must be greater than 0")
-	}
-
-	var taint *corev1.Taint
-	if !c.DisableTaint {
-		var err error
-		taint, err = getTaint(c)
-		if err != nil {
-			return err
+	for i := 0; i < c.NodeNumber; i++ {
+		nodeName := c.NodeName + "-" + strconv.Itoa(i)
+		if ok := provider.ValidOperatingSystems[c.OperatingSystem]; !ok {
+			return errdefs.InvalidInputf("operating system %q is not supported", c.OperatingSystem)
 		}
-	}
 
-	client, err := newClient(c.KubeConfigPath)
-	if err != nil {
-		return err
-	}
+		if c.PodSyncWorkers == 0 {
+			return errdefs.InvalidInput("pod sync workers must be greater than 0")
+		}
 
-	// Create a shared informer factory for Kubernetes pods in the current namespace (if specified) and scheduled to the current node.
-	podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(
-		client,
-		c.InformerResyncPeriod,
-		kubeinformers.WithNamespace(c.KubeNamespace),
-		kubeinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", nodeName).String()
-		}))
-	podInformer := podInformerFactory.Core().V1().Pods()
-	fmt.Println("[debug][point1] >>>>>>>" + nodeName)
-	// Create another shared informer factory for Kubernetes secrets and configmaps (not subject to any selectors).
-	scmInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, c.InformerResyncPeriod)
-	// Create a secret informer and a config map informer so we can pass their listers to the resource manager.
-	secretInformer := scmInformerFactory.Core().V1().Secrets()
-	configMapInformer := scmInformerFactory.Core().V1().ConfigMaps()
-	serviceInformer := scmInformerFactory.Core().V1().Services()
-
-	rm, err := manager.NewResourceManager(podInformer.Lister(), secretInformer.Lister(), configMapInformer.Lister(), serviceInformer.Lister())
-	if err != nil {
-		return errors.Wrap(err, "could not create resource manager")
-	}
-
-	apiConfig, err := getAPIConfig(c)
-	if err != nil {
-		return err
-	}
-
-	if err := setupTracing(ctx, c); err != nil {
-		return err
-	}
-
-	initConfig := provider.InitConfig{
-		ConfigPath:        c.ProviderConfigPath,
-		NodeName:          nodeName,
-		OperatingSystem:   c.OperatingSystem,
-		ResourceManager:   rm,
-		DaemonPort:        int32(c.ListenPort) + int32(id),
-		InternalIP:        os.Getenv("VKUBELET_POD_IP"),
-		KubeClusterDomain: c.KubeClusterDomain,
-	}
-	pInit := s.Get(c.Provider)
-	if pInit == nil {
-		return errors.Errorf("provider %q not found", c.Provider)
-	}
-
-	p, err := pInit(initConfig)
-	if err != nil {
-		return errors.Wrapf(err, "error initializing provider %s", c.Provider)
-	}
-	ctx = log.WithLogger(ctx, log.G(ctx).WithFields(log.Fields{
-		"provider":         c.Provider,
-		"operatingSystem":  c.OperatingSystem,
-		"node":             nodeName,
-		"watchedNamespace": c.KubeNamespace,
-	}))
-
-	var leaseClient v1beta1.LeaseInterface
-	if c.EnableNodeLease {
-		leaseClient = client.CoordinationV1beta1().Leases(corev1.NamespaceNodeLease)
-	}
-
-	pNode := NodeFromProvider(ctx, nodeName, taint, p, c.Version)
-	nodeRunner, err := node.NewNodeController(
-		node.NaiveNodeProvider{},
-		pNode,
-		client.CoreV1().Nodes(),
-		node.WithNodeEnableLeaseV1Beta1(leaseClient, nil),
-		node.WithNodePingInterval(c.HeartInterval),
-		node.WithNodeStatusUpdateInterval(c.HeartInterval),
-		node.WithNodeStatusUpdateErrorHandler(func(ctx context.Context, err error) error {
-			if !k8serrors.IsNotFound(err) {
-				return err
-			}
-
-			log.G(ctx).Debug("node not found")
-			newNode := pNode.DeepCopy()
-			newNode.ResourceVersion = ""
-			_, err = client.CoreV1().Nodes().Create(newNode)
+		var taint *corev1.Taint
+		if !c.DisableTaint {
+			var err error
+			taint, err = getTaint(c)
 			if err != nil {
 				return err
 			}
-			log.G(ctx).Debug("created new node")
-			return nil
-		}),
-	)
-	if err != nil {
-		log.G(ctx).Fatal(err)
-	}
-	fmt.Println("[debug][point2] >>>>>>>" + nodeName)
-	eb := record.NewBroadcaster()
-	eb.StartLogging(log.G(ctx).Infof)
-	eb.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: client.CoreV1().Events(c.KubeNamespace)})
-
-	pc, err := node.NewPodController(node.PodControllerConfig{
-		PodClient:         client.CoreV1(),
-		PodInformer:       podInformer,
-		EventRecorder:     eb.NewRecorder(scheme.Scheme, corev1.EventSource{Component: path.Join(pNode.Name, "pod-controller")}),
-		Provider:          p,
-		SecretInformer:    secretInformer,
-		ConfigMapInformer: configMapInformer,
-		ServiceInformer:   serviceInformer,
-	})
-	if err != nil {
-		return errors.Wrap(err, "error setting up pod controller")
-	}
-
-	go podInformerFactory.Start(ctx.Done())
-	go scmInformerFactory.Start(ctx.Done())
-
-	cancelHTTP, err := setupHTTPServer(ctx, p, apiConfig, func(context.Context) ([]*corev1.Pod, error) {
-		return rm.GetPods(), nil
-	})
-	if err != nil {
-		return err
-	}
-	defer cancelHTTP()
-
-	go func() {
-		if err := pc.Run(ctx, c.PodSyncWorkers); err != nil && errors.Cause(err) != context.Canceled {
-			log.G(ctx).Fatal(err)
 		}
-	}()
 
-	if c.StartupTimeout > 0 {
-		ctx, cancel := context.WithTimeout(ctx, c.StartupTimeout)
-		log.G(ctx).Info("Waiting for pod controller / VK to be ready")
-		select {
-		case <-ctx.Done():
-			cancel()
-			return ctx.Err()
-		case <-pc.Ready():
-		}
-		cancel()
-		if err := pc.Err(); err != nil {
+		client, err := newClient(c.KubeConfigPath)
+		if err != nil {
 			return err
 		}
-	}
 
-	go func() {
-		if err := nodeRunner.Run(ctx); err != nil {
+		// Create a shared informer factory for Kubernetes pods in the current namespace (if specified) and scheduled to the current node.
+		podInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(
+			client,
+			c.InformerResyncPeriod,
+			kubeinformers.WithNamespace(c.KubeNamespace),
+			kubeinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
+				options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", nodeName).String()
+			}))
+		podInformer := podInformerFactory.Core().V1().Pods()
+		fmt.Println("[debug][point1] >>>>>>>" + nodeName)
+		// Create another shared informer factory for Kubernetes secrets and configmaps (not subject to any selectors).
+		scmInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, c.InformerResyncPeriod)
+		// Create a secret informer and a config map informer so we can pass their listers to the resource manager.
+		secretInformer := scmInformerFactory.Core().V1().Secrets()
+		configMapInformer := scmInformerFactory.Core().V1().ConfigMaps()
+		serviceInformer := scmInformerFactory.Core().V1().Services()
+
+		rm, err := manager.NewResourceManager(podInformer.Lister(), secretInformer.Lister(), configMapInformer.Lister(), serviceInformer.Lister())
+		if err != nil {
+			return errors.Wrap(err, "could not create resource manager")
+		}
+
+		apiConfig, err := getAPIConfig(c)
+		if err != nil {
+			return err
+		}
+
+		if err := setupTracing(ctx, c); err != nil {
+			return err
+		}
+
+		initConfig := provider.InitConfig{
+			ConfigPath:        c.ProviderConfigPath,
+			NodeName:          nodeName,
+			OperatingSystem:   c.OperatingSystem,
+			ResourceManager:   rm,
+			DaemonPort:        int32(c.ListenPort) + int32(i),
+			InternalIP:        os.Getenv("VKUBELET_POD_IP"),
+			KubeClusterDomain: c.KubeClusterDomain,
+		}
+		pInit := s.Get(c.Provider)
+		if pInit == nil {
+			return errors.Errorf("provider %q not found", c.Provider)
+		}
+
+		p, err := pInit(initConfig)
+		if err != nil {
+			return errors.Wrapf(err, "error initializing provider %s", c.Provider)
+		}
+		ctx = log.WithLogger(ctx, log.G(ctx).WithFields(log.Fields{
+			"provider":         c.Provider,
+			"operatingSystem":  c.OperatingSystem,
+			"node":             nodeName,
+			"watchedNamespace": c.KubeNamespace,
+		}))
+
+		var leaseClient v1beta1.LeaseInterface
+		if c.EnableNodeLease {
+			leaseClient = client.CoordinationV1beta1().Leases(corev1.NamespaceNodeLease)
+		}
+
+		pNode := NodeFromProvider(ctx, nodeName, taint, p, c.Version)
+		nodeRunner, err := node.NewNodeController(
+			node.NaiveNodeProvider{},
+			pNode,
+			client.CoreV1().Nodes(),
+			node.WithNodeEnableLeaseV1Beta1(leaseClient, nil),
+			node.WithNodePingInterval(c.HeartInterval),
+			node.WithNodeStatusUpdateInterval(c.HeartInterval),
+			node.WithNodeStatusUpdateErrorHandler(func(ctx context.Context, err error) error {
+				if !k8serrors.IsNotFound(err) {
+					return err
+				}
+
+				log.G(ctx).Debug("node not found")
+				newNode := pNode.DeepCopy()
+				newNode.ResourceVersion = ""
+				_, err = client.CoreV1().Nodes().Create(newNode)
+				if err != nil {
+					return err
+				}
+				log.G(ctx).Debug("created new node")
+				return nil
+			}),
+		)
+		if err != nil {
 			log.G(ctx).Fatal(err)
 		}
-	}()
+		fmt.Println("[debug][point2] >>>>>>>" + nodeName)
+		eb := record.NewBroadcaster()
+		eb.StartLogging(log.G(ctx).Infof)
+		eb.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: client.CoreV1().Events(c.KubeNamespace)})
 
-	log.G(ctx).Info("Initialized")
+		pc, err := node.NewPodController(node.PodControllerConfig{
+			PodClient:         client.CoreV1(),
+			PodInformer:       podInformer,
+			EventRecorder:     eb.NewRecorder(scheme.Scheme, corev1.EventSource{Component: path.Join(pNode.Name, "pod-controller")}),
+			Provider:          p,
+			SecretInformer:    secretInformer,
+			ConfigMapInformer: configMapInformer,
+			ServiceInformer:   serviceInformer,
+		})
+		if err != nil {
+			return errors.Wrap(err, "error setting up pod controller")
+		}
 
+		go podInformerFactory.Start(ctx.Done())
+		go scmInformerFactory.Start(ctx.Done())
+
+		cancelHTTP, err := setupHTTPServer(ctx, p, apiConfig, func(context.Context) ([]*corev1.Pod, error) {
+			return rm.GetPods(), nil
+		})
+		if err != nil {
+			return err
+		}
+		defer cancelHTTP()
+
+		go func() {
+			if err := pc.Run(ctx, c.PodSyncWorkers); err != nil && errors.Cause(err) != context.Canceled {
+				log.G(ctx).Fatal(err)
+			}
+		}()
+
+		if c.StartupTimeout > 0 {
+			ctx, cancel := context.WithTimeout(ctx, c.StartupTimeout)
+			log.G(ctx).Info("Waiting for pod controller / VK to be ready")
+			select {
+			case <-ctx.Done():
+				cancel()
+				return ctx.Err()
+			case <-pc.Ready():
+			}
+			cancel()
+			if err := pc.Err(); err != nil {
+				return err
+			}
+		}
+
+		go func() {
+			if err := nodeRunner.Run(ctx); err != nil {
+				log.G(ctx).Fatal(err)
+			}
+		}()
+
+		log.G(ctx).Info("Initialized")
+		time.Sleep(30 * time.Second)
+	}
 	<-ctx.Done()
+
+	time.Sleep(24 * time.Hour)
 	return nil
 }
 
