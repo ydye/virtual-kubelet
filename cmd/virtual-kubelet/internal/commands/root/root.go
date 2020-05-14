@@ -16,6 +16,7 @@ package root
 
 import (
 	"context"
+	"fmt"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/virtual-kubelet/virtual-kubelet/cmd/virtual-kubelet/internal/provider"
@@ -101,7 +102,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts, nodeName str
 			options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", nodeName).String()
 		}))
 	podInformer := podInformerFactory.Core().V1().Pods()
-
+	fmt.Println("[debug][point1] >>>>>>>" + nodeName)
 	// Create another shared informer factory for Kubernetes secrets and configmaps (not subject to any selectors).
 	scmInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, c.InformerResyncPeriod)
 	// Create a secret informer and a config map informer so we can pass their listers to the resource manager.
@@ -141,7 +142,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts, nodeName str
 	if err != nil {
 		return errors.Wrapf(err, "error initializing provider %s", c.Provider)
 	}
-
+	fmt.Println("[debug][point2] >>>>>>>" + nodeName)
 	ctx = log.WithLogger(ctx, log.G(ctx).WithFields(log.Fields{
 		"provider":         c.Provider,
 		"operatingSystem":  c.OperatingSystem,
