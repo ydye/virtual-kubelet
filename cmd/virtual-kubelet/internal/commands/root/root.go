@@ -109,7 +109,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 		if err != nil {
 			return errors.Wrap(err, "could not create resource manager")
 		}
-
+		c.ListenPort = int32(10225 + i)
 		apiConfig, err := getAPIConfig(c)
 		if err != nil {
 			return err
