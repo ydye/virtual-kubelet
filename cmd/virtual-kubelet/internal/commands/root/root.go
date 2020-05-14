@@ -142,7 +142,6 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts, nodeName str
 	if err != nil {
 		return errors.Wrapf(err, "error initializing provider %s", c.Provider)
 	}
-	fmt.Println("[debug][point2] >>>>>>>" + nodeName)
 	ctx = log.WithLogger(ctx, log.G(ctx).WithFields(log.Fields{
 		"provider":         c.Provider,
 		"operatingSystem":  c.OperatingSystem,
@@ -182,7 +181,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts, nodeName str
 	if err != nil {
 		log.G(ctx).Fatal(err)
 	}
-
+	fmt.Println("[debug][point2] >>>>>>>" + nodeName)
 	eb := record.NewBroadcaster()
 	eb.StartLogging(log.G(ctx).Infof)
 	eb.StartRecordingToSink(&corev1client.EventSinkImpl{Interface: client.CoreV1().Events(c.KubeNamespace)})
