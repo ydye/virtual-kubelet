@@ -10,6 +10,12 @@
 - name: "remove /etc/virtual-kubelet"
   command: "rm -rf /etc/virtual-kubelet"
 
+- name: "remove /usr/bin/virtual-kubelet.sh"
+  command: "rm -rf /usr/bin/virtual-kubelet.sh"
+
+- name: "remove /usr/bin/virtual-kubelet"
+  command: "rm -rf /usr/bin/virtual-kubelet"
+
 - name: just force systemd to reread configs
   systemd:
     daemon_reload: yes
