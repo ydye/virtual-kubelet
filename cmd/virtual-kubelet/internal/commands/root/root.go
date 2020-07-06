@@ -234,7 +234,7 @@ func runRootCommand(ctx context.Context, s *provider.Store, c Opts) error {
 		}()
 
 		log.G(ctx).Info("Initialized")
-		time.Sleep(30 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
 	<-ctx.Done()
 
